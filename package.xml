@@ -1,0 +1,18 @@
+<package>
+  <name>speech2action</name>
+  <version>0.1.0</version>
+  <description>
+    This package is a tool to create finite state grammars and interpret corresponding actions by use of hints, function names, and basic context. Designed to be used with PocketSphinx, and requires the jsgf2fsg tool.
+  </description>
+  <author>Jake Merdich</author>
+  <license>SE</license>
+  <maintainer email="jake@todo.todo">jake</maintainer>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <run_depend>rospy</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>move_base_msgs</run_depend>
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>actionlib</run_depend>
+</package>
