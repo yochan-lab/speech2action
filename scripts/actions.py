@@ -14,8 +14,11 @@ from geometry_msgs.msg import Pose, Point, Quaternion
 from actionlib import *
 from location_provider.srv import GetLocationList
 
-import rosplan_interface as planner
-import state_machine.msg
+try:
+    import rosplan_interface as planner
+    import state_machine.msg
+except:
+    pass
 from constructs import *
 from parser import FnHintParser
 
