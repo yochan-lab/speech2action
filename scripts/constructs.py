@@ -253,13 +253,13 @@ class ArbitraryWordSyntax(BaseSyntax):
     def __init__(self, accept_numbers=True):
         self.accept_numbers = accept_numbers
 
-    def get_regex(self, names=[])
+    def get_regex(self, names=[]):
         if self.accept_numbers:
             return '\w'
         else:
             return '[A-Za-z]+'
 
-     def get_jsgf(self, use_names=True, weight=False):
+    def get_jsgf(self, use_names=True, weight=False):
             raise RuntimeError("Finite state grammars do not support arbitrary inputs")
 
 if __name__ == '__main__':

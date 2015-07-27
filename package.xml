@@ -13,6 +13,7 @@
   <run_depend>rospy</run_depend>
   <run_depend>std_msgs</run_depend>
   <run_depend>move_base_msgs</run_depend>
+  <run_depend>location_provider</run_depend>
   <run_depend>geometry_msgs</run_depend>
   <run_depend>actionlib</run_depend>
 </package>

@@ -7,9 +7,16 @@ import sys
 import rospy
 import std_msgs.msg
 import actionlib
+import time
+
+import datetime
 from geometry_msgs.msg import Pose, Point, Quaternion
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+from actionlib import *
+from location_provider.srv import GetLocationList
 
+import rosplan_interface as planner
+import state_machine.msg
 from constructs import *
 from parser import FnHintParser
 
@@ -17,53 +24,31 @@ name = "sprinkles"
 
 
 move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
-locations = {"tony's office": Pose(Point(2.495, 1.964, 0.000), Quaternion(0.000, 0.000, -0.044, 0.999)),
-             "room five sixty": Pose(Point(2.581, 4.985, 0.000), Quaternion(0.000, 0.000, -0.028, 1.000)),
-             "kitchen": Pose(Point(-8.588, 28.927, 0.000), Quaternion(0.000, 0.000, 1.000, -0.015)),
-             "cubicle": Pose(Point(-0.717, 0.897, 0.000), Quaternion(0.000, 0.000, 0.734, 0.680)),
-             "conference room": Pose(Point(1.056, 35.795, 0.000), Quaternion(0.000, 0.000, 0.048, 0.999)),
-             "eye tea": Pose(Point(-15.275, 36.182, 0.000), Quaternion(0.000, 0.000, 0.741, 0.672)),
-             "entrance": Pose(Point(-4.926, 5.199, 0.000), Quaternion(0.000, 0.000, 0.977, -0.211))}
 tts = rospy.Publisher("tosay", std_msgs.msg.String)
-
+loc = rospy.ServiceProxy('/get_location_list', GetLocationList)
+locations = None
 nicegeneric = S('please') | 'will you'
 nicepre = nicegeneric | S('go ahead and')
 nicepost = nicegeneric | (~S('right') + 'now')
-cmd = S('okay') + S(name) + ~nicepre + (
-    ((S('move') | 'go' | 'drive') % 'go' +
-     ((S('right') | 'left') % 'direction' | (S('to') + ~S('the') +
-      (reduce(lambda x, y: x | y, locations.iterkeys(), S("nowhere")) % 'place')))) |
-    (S('stop') | 'halt' | 'exit') % 'halt' |
-    ((S('spin') % 'spin' | S('turn') % 'go') + (S('around') | 'left' | 'right') % 'direction') |
-    ((S('say') | 'tell me' | 'speak' | 'what is' | 'what\'s') % 'say' + ~S('your') +
-     (S('name') | 'identification' | 'id' | 'hello' | 'hi') % 'info') |
-    (S("where are you going") % 'where') |
-    (S('are you my') + (S("friend") % 'info')) |
-    (S('do you') + (S("love") % 'info') + "me")
-) + (~nicepost)
 
 master = FnHintParser()
 
+face_last_seen = None
+TIME_TOLERANCE = 5
+
+def face_callback(*args, **kwargs):
+   global face_last_seen
+   face_last_seen = datetime.datetime.now() 
+
+def face_active():
+   if face_last_seen is None:
+       return False
+   return face_last_seen > datetime.datetime.now() - datetime.timedelta(seconds=TIME_TOLERANCE)
 
 @master.register_fn(keywords='dir')
 def go(place):
-    move_base.cancel_all_goals()
-    if place in locations:
-        goal = MoveBaseGoal()
-        goal.target_pose.pose = locations[place]
-        goal.target_pose.header.frame_id = 'map'
-        goal.target_pose.header.stamp = rospy.Time.now()
-        move_base.send_goal(goal)
-        _say("Now going to the " + str(place))
-    elif place == "nowhere":
-        _say("We're getting nowhere. Stopping.")
-    else:
-        _say("I don't know where " + location + " is.")
-
-
-@master.register_fn()
-def go_to(direction):
-    _say("Direct control via voice is a really bad idea")
+    _say("Okay. I will go to the " + str(place))
+    return planner.gen_predicate('robotat', x=place)
 
 
 @master.register_fn()
@@ -90,33 +75,97 @@ def _say(msg):
 
 @master.register_fn()
 def halt():
-    move_base.cancel_all_goals()
+    planner.cancel()
     _say("Stopping")
 
 
 @master.register_fn()
 def spin(direction='around'):
+    _say('No')
     return
 
 
+class InteractServer(object):
+    def __init__(self, name):
+        self.active = False
+        self._action_name = name
+        self.goals = []
+        self._feedback = state_machine.msg.interactFeedback()
+        self._server = SimpleActionServer("interact",
+                                          state_machine.msg.interactAction,
+                                          execute_cb=self.execute_cb,
+                                          auto_start = False)
+        self._server.start()
+	rospy.loginfo( "Interact Server started")
 
+    def speech_callback(self, topic_data, parser):
+        rospy.loginfo(topic_data)
+        rospy.loginfo("============")
+        rospy.loginfo(topic_data)
+        if self.active:
+            rospy.loginfo("Interpreting...")
+            goal_s = parser.parse_and_run(topic_data.data)
+            rospy.loginfo("Result: ", goal_s)
+            if hasattr(goal_s, '__iter__'):
+                self.goals.extend(goal_s)
+            elif goal_s is not None:
+                self.goals.append(goal_s)
 
-master.register_syntax(cmd)
+    def execute_cb(self, goal):
+        #print goal.goal_id
+        if self.active:
+            if False and self._server.is_preempt_requested():
+                rospy.loginfo('%s: Preempted' % self._action_name)
+                self._server.set_preempted()
+                self.active = False
+            return
+        rospy.loginfo("interacting")
+        self.active = True
+        #self._feedback.isInteracting = True
 
+        #self._server.publish_feedback(self._feedback)
+        time.sleep(3)
+        while face_active():
+            rospy.loginfo(face_active())
+            time.sleep(.5)
+        if not self.active:
+            # We're dead, don't send bad info
+            return
+        self.active = False
 
+        rospy.loginfo("done interacting")
+        res = state_machine.msg.interactResult()
+        res.action = self.goals
+        self.goals = []
+        if res.action:
+            self._server.set_succeeded(res)
+        else:
+            self._server.set_aborted()
 
-
-
-def speech_callback(topic_data, parser):
-    rospy.loginfo("============")
-    rospy.loginfo(topic_data)
-    parser.parse_and_run(topic_data.data)
+def get_cmd():
+    global locations
+    rospy.wait_for_service('/get_location_list')
+    locations = loc().output
+    cmd = ~S('okay') + S(name) + ~nicepre + (
+        ((S('move') | 'go' | 'drive') % 'go' +
+         ((S('to') + ~S('the') +
+          (reduce(lambda x, y: x | y, locations, S("starting_point")) % 'place')))) |
+        (S('stop') | 'halt' | 'exit') % 'halt' |
+        ((S('spin') % 'spin' | S('turn') % 'go') + (S('around') | 'left' | 'right') % 'direction') |
+        ((S('say') | 'tell me' | 'speak' | 'what is' | 'what\'s') % 'say' + ~S('your') +
+         (S('name') | 'identification' | 'id' | 'hello' | 'hi') % 'info') |
+        (S("where are you going") % 'where')
+    ) + (~nicepost)
+    return cmd
 
 
 if __name__ == '__main__':
     rospy.init_node('speech_interpreter')
+    master.register_syntax(get_cmd())
     speech_topic = rospy.get_param('~speech_in', 'recognizer/speech')
-    textin = rospy.Subscriber(speech_topic, std_msgs.msg.String, callback=speech_callback, callback_args=master)
+    planner.init()
+    srv = InteractServer(rospy.get_name())
+    textin = rospy.Subscriber(speech_topic, std_msgs.msg.String, callback=srv.speech_callback, callback_args=master)
     rospy.spin() 
 
 ##
