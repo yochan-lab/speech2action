@@ -11,7 +11,6 @@ import time
 
 import datetime
 from geometry_msgs.msg import Pose, Point, Quaternion
-from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from actionlib import *
 from location_provider.srv import GetLocationList
 
@@ -23,7 +22,6 @@ from parser import FnHintParser
 name = "sprinkles"
 
 
-move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
 tts = rospy.Publisher("tosay", std_msgs.msg.String)
 loc = rospy.ServiceProxy('/get_location_list', GetLocationList)
 locations = None
