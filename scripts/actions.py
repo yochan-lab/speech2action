@@ -107,6 +107,7 @@ class InteractServer(object):
         self.active = False
         self._action_name = name
 	self.name = None
+	self.nl_listen = False
         self.goals = []
         self._feedback = state_machine.msg.interactFeedback()
         self._server = SimpleActionServer("interact",
@@ -119,7 +120,7 @@ class InteractServer(object):
     def speech_callback(self, topic_data, parser):
         rospy.loginfo("============")
         rospy.loginfo('%s, speaking: %s' % (topic_data.data, str(currently_speaking)))
-        if self.active and not currently_speaking:
+        if self.active and not currently_speaking and not self.nl_listen:
             rospy.loginfo("Interpreting...")
             goal_s = parser.parse_and_run(topic_data.data)
             rospy.loginfo("Result: %s", str(goal_s))
@@ -166,8 +167,10 @@ class InteractServer(object):
 	    rospy.logwarn("Timeout waiting for person creation")
 	    return False
 	_say("Please state your name.")
-	rospy.sleep(5)
+	rospy.sleep(4)
+	self.nl_listen = True
 	newname = self._nl_service()
+	self.nl_listen = False
 	if newname.success:
 	    self._mkname_service(newname.message, id)
 	    self.name = newname.message
