@@ -13,12 +13,12 @@ import datetime
 from geometry_msgs.msg import Pose, Point, Quaternion
 from actionlib import *
 from location_provider.srv import GetLocationList
-from name_provider.srv import GetRealName, CreateNewPerson
 from std_srvs.srv import Trigger
 
 try:
     import rosplan_interface as planner
     import state_machine.msg
+    from name_provider.srv import GetRealName, CreateNewPerson
 except:
     pass
 from constructs import *
