@@ -240,8 +240,8 @@ def get_cmd():
         ((S('say') | 'tell me' | 'speak' | 'what is' | 'what\'s') % 'say' + ~(S('your') | 'a') +
          (S('name') | 'identification' | 'id' | 'hello' | 'hi' | 'joke') % 'info') |
         (S("where are you going") % 'where') |
-	((S('take')|S('bring')|S('give')|S('send')) + ~S('a') + S("message") % 'bring_msg' + ~S('from' + loc_syntax % 'source') + S('to') + loc_syntax % 'dest')
-    ) + (~nicepost)
+	((S('take')|S('bring')|S('give')|S('send')) + ~S('a') + S("message") % 'bring_msg' + ~(S('from') + loc_syntax % 'source') + S('to') + loc_syntax % 'dest')
+    )
     return cmd
 
 
