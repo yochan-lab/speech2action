@@ -28,6 +28,7 @@ name = "sprinkles"
 
 
 tts = rospy.Publisher("tosay", std_msgs.msg.String, queue_size=5)
+valid_in = rospy.Publisher("heard", std_msgs.msg.String, queue_size=5)
 loc = rospy.ServiceProxy('/get_location_list', GetLocationList)
 locations = None
 nicegeneric = S('please') | 'will you'
@@ -102,6 +103,14 @@ def spin(direction='around'):
     return
 
 
+@master.register_fn()
+def bring_msg(source, dest):
+    msg_name = planner.add_instance('message')
+    planner.add_predicate('has_message', person=source, msg=msg_name)
+    return planner.gen_predicate('has_message', person=dest, msg=msg_name)
+
+
+
 class InteractServer(object):
     def __init__(self, name):
         self.active = False
@@ -120,7 +129,8 @@ class InteractServer(object):
     def speech_callback(self, topic_data, parser):
         rospy.loginfo("============")
         rospy.loginfo('%s, speaking: %s' % (topic_data.data, str(currently_speaking)))
-        if self.active and not currently_speaking and not self.nl_listen:
+        if self.active and not currently_speaking and not self.nl_listen and topic_data.data:
+	    valid_in.publish(std_msgs.msg.String(str(topic_data.data)))
             rospy.loginfo("Interpreting...")
             goal_s = parser.parse_and_run(topic_data.data)
             rospy.loginfo("Result: %s", str(goal_s))
@@ -148,7 +158,6 @@ class InteractServer(object):
 	    _say("I do not recognize you.")
 	    self.set_name(id)
 
-    @master.register_fn()
     def set_name(self, id=None, *args, **kwargs):
 	if id is None:
 	    id = self.id
@@ -172,6 +181,7 @@ class InteractServer(object):
 	newname = self._nl_service()
 	self.nl_listen = False
 	if newname.success:
+	    valid_in.publish(std_msgs.msg.String(str(newname.message)))
 	    self._mkname_service(newname.message, id)
 	    self.name = newname.message
 	    _say("Hello %s." % self.name)
@@ -219,16 +229,18 @@ def get_cmd():
     global locations
     rospy.wait_for_service('/get_location_list')
     locations = loc().output
+    loc_syntax = (reduce(lambda x, y: x | y, locations, S(locations.pop())))
     cmd = ~S('okay') + S(name) + ~nicepre + (
 	(S('change my name') % 'set_name') |
         ((S('move') | 'go' | 'drive') % 'go' +
          ((S('to') + ~S('the') +
-          (reduce(lambda x, y: x | y, locations, S(locations.pop())) % 'place')))) |
+           loc_syntax % 'place'))) |
         (S('stop') | 'halt' | 'exit') % 'halt' |
         ((S('spin') % 'spin' | S('turn') % 'go') + (S('around') | 'left' | 'right') % 'direction') |
         ((S('say') | 'tell me' | 'speak' | 'what is' | 'what\'s') % 'say' + ~(S('your') | 'a') +
          (S('name') | 'identification' | 'id' | 'hello' | 'hi' | 'joke') % 'info') |
-        (S("where are you going") % 'where')
+        (S("where are you going") % 'where') |
+	((S('take')|'bring'|'give'|'send' + ~S('a') + S("message") % 'bring_msg' + ~S('from' + loc_syntax % 'source') + S('to') + loc_syntax % 'dest')
     ) + (~nicepost)
     return cmd
 
@@ -239,9 +251,13 @@ if __name__ == '__main__':
     speech_topic = rospy.get_param('~speech_in', '/recognizer/output')
     active_topic = rospy.get_param('~active', '/face_finder/closest_face')
     planner.init()
+
     srv = InteractServer(rospy.get_name())
+    master.register_fn(srv.set_name)
+
     textin = rospy.Subscriber(speech_topic, std_msgs.msg.String, callback=srv.speech_callback, callback_args=master)
     check_active = rospy.Subscriber(active_topic, rospy.msg.AnyMsg, callback=face_callback)
     check_voice = rospy.Subscriber('/is_speaking', std_msgs.msg.Bool, callback=voice_callback)
+
     rospy.spin() 
 
